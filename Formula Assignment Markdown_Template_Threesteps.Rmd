@@ -1,0 +1,328 @@
+---
+title: "Molecular Formula Assignment with MFAssignR"
+author: "Simeon Schum"
+date: "December 7, 2018"
+output: html_document
+params: 
+  data: x
+---
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#Loading the necessary packages to do this formula assignment
+library(MFAssignR)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+
+#The following two lines show how to set the working directory, and load the datafile
+#They are just placeholder names and can be changed  as necessary for your work
+#setwd("C:/Data Folder")
+#Data <- read.csv("Sample1.csv")
+
+
+
+
+
+file_name=substr(params$data,1,nchar(params$data)-7)
+
+print(file_name)
+
+Data <- read.csv(paste0(file_name,"_MS.csv"), stringsAsFactors = FALSE) #Auto Loads the data
+
+
+
+#This value allows you to change the signal-to-noise ratio that will be multiplied by the estimated noise to determing the noise removal threshold.
+
+ SNRatio <- 6
+```
+###Signal To Noise Assessment
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+
+#This is the signal to noise assessment section of the R markdown, demonstrating how to use the function KMDNoise()
+Noise <-KMDNoise(Data, upper.y = 0.4, lower.y = 0.2)
+#This part shows how to extract the results  of the KMDNoise() function so that they can be used
+Noise[["KMD"]]  #Plot showing the signal to noise estimation plot
+KMDN <-Noise[["Noise"]]    #Saving the estimated noise as a global variable in the environment
+KMDN         #Printing the noise so that you can see it in the final report.
+
+
+
+#This plot is used just to look at the noise threshold relative to the mass peaks and their intensities.
+
+# SNplot(Data, cut = SNRatio * HistN, mass = 419.1, window.x = 0.2, window.y = 10) 
+
+ SNplot(Data, cut = SNRatio * KMDN, mass = 419.1, window.x = 0.2, window.y = 10)
+
+```
+
+###Isotope Identification
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+#This section shows the usage of the IsoFiltR() function, which separates the single raw mass list that you should be using into a list of likely monoisotopic masses ("Mono") and likely polyisotopic masses ("Iso")
+
+Isotopes <- IsoFiltR(Data, SN = SNRatio * KMDN)
+
+
+#The following two lines simply extract the two resultant mass lists from IsoFiltR so that they can be used in later steps.
+Mono <- Isotopes[["Mono"]]
+Iso <- Isotopes[["Iso"]]
+
+
+#check <- unique(Data)
+```
+
+###Prelim Assignment
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, results = "hide"}
+#Be sure this is updated based on what you want to be assigning
+
+#.rs.restartR()
+
+#The following line shows how to use the CHO only version of formula assignment. It is typically done in order to find molecular formula series to be used in recalibration
+
+Assign <- MFAssignCHO_RMD(Mono, Iso, ionMode = "neg", lowMW =50, highMW = 650, ppm_err = 10, H_Cmin = 0.3,
+                      HetCut = "off", NMScut = "on", SN = SNRatio*KMDN)   #Standard parameters for negative mode
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#The following lines extract the outputs  from the MFAssignCHO_RMD() function, there are 4 plots and 3 dataframes.
+
+Unambig1 <- Assign[["Unambig"]]  #Unambiguous molecular formula assignments
+Ambig1 <- Assign[["Ambig"]]      #Ambiguous moleccular formula assignments
+Unassigned <- Assign[["None"]]   #Unassigned masses
+Plot1 <- Assign[["MSAssign"]]    #Mass spectrum showing which peaks are assigned and unassigned in the spectru 
+Plot2 <- Assign[["Error"]]       #Plot showing the error trend relative to mass for assignments
+Plot3 <- Assign[["MSgroups"]]    #Mass spectrum showing the assigned molecular formulas
+Plot4 <- Assign[["VK"]]          #O/C vs H/C plot showing the assigned molecular formulas
+Plot1
+Plot2
+Plot3
+Plot4
+
+
+check <- unique(Unassigned)
+#Doing this just clears up some of the memory to keep the markdown running as fast as possible
+rm(Plot1)
+rm(Plot2)
+rm(Plot3)
+rm(Plot4)
+rm(Unassigned)
+rm(Ambig1)
+gc()
+```
+
+###Recalibration
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+#This is the section that requires the most user input. You should run through a representative sample first so that you know what recalibrants you are planning on using, and then set those recalibrants in the function
+
+#This function provides you with a list of possible recalibrant series. See the ReadMe for more information about choosing recalibrants.
+check <- RecalList(Unambig1)
+
+##################################
+#Qualitative check of recalibrant series and mass recalibration.
+
+# #The following lines show the use of the Recal() function. See the ReadMe for more information about usage of this funtion.
+
+
+Test <- Recal(Unambig1, peaks = Mono, isopeaks = Iso, mzRange = 50, mode = "neg", SN = SNRatio*KMDN, series1 = "O8_H_8", series2 = "O13_H_11", series3 = "O10_H_9", series4 = "O5_H_6", series5 = "O8_H_7", series6 = "O14_H_11", series7 = "O8_H_6", series8 = "O12_H_10", series9 = "O10_H_10", series10 = "O9_H_8")
+
+Plot <- Test[["Plot"]]
+Plot      #This plot is slow to generate
+Mono2 <- Test[["Mono"]]   #Recalibrated monoisotopic mass list
+Iso2 <- Test[["Iso"]]     #Recalibrated isotopic mass lists
+
+List <- Test[["RecalList"]]
+```
+
+###Assignment CHONS
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE, results = "hide"}
+
+#Be sure this is updated based on what you want to be assigning
+
+#.rs.restartR()
+
+#Use of MFAssignCHO() for molecualr formula assignment.
+
+
+#Be sure this is updated based on what you want to be assigning
+
+
+Assign <- MFAssign_RMD(Mono2, Iso2,ionMode = "neg", lowMW =50, highMW = 650, Sx = 1, Nx = 3,Clx =0, Cl37x = 0, ppm_err = 5, H_Cmin = 0.3, Omin = 1,
+                      HetCut = "off", NMScut = "on", SN = SNRatio*KMDN, DeNovo = 450, nLoop = 5, SulfCheck = "on", Ambig = "off", MSMS = "off")   #Standard parameters for negative mode
+
+ 
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#Extraction of data from the MFAssign_RMD() function. It has the same format as the MFAssignCHO_RMD() function.
+Unambig1 <- Assign[["Unambig"]]
+Ambig1 <- Assign[["Ambig"]]
+Unassigned <- Assign[["None"]]
+
+
+
+Plot1 <- Assign[["MSAssign"]]
+Plot2 <- Assign[["Error"]]
+Plot3 <- Assign[["MSgroups"]]
+Plot4 <- Assign[["VK"]]
+Plot1
+Plot2
+Plot3
+Plot4
+
+print(nrow(Unambig1))
+
+check <- unique(Unassigned)
+#Saving the data to an external .csv file for further analysis and interpretation.
+
+write.csv(Unambig1, paste0("Assigned Formulas/CHONS/", file_name, "_CHONS_UMF.csv"), row.names=FALSE, na="")
+write.csv(Ambig1, paste0("Assigned Formulas/CHONS/", file_name, "_CHONS_AMF.csv"), row.names=FALSE, na="")
+write.csv(List, paste0("Assigned Formulas/CHONS/", file_name, "_RC.csv"), row.names=FALSE, na="")
+# write.csv(Unassigned, paste0("Assigned Formulas/", file_name, "_CHONS_UNA.csv"), row.names=FALSE, na="")
+
+rm(Plot1)
+rm(Plot2)
+rm(Plot3)
+rm(Plot4)
+gc()
+
+```
+###Full Assignment CHNOSCl
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+# ##combine the unassigned and the ambiguous masses 
+unassignedA<- Ambig1 %>% select(exp_mass, abundance)
+unassignedA <- unique(unassignedA)
+#unassignedA<- unassignedA %>% rename(mass=exp_mass) # No longer necessary
+
+unassignedAB <- rbind(unassignedA, Unassigned)
+
+Isotopes <- IsoFiltR(unassignedAB, SN = SNRatio * KMDN)
+
+
+#The following two lines simply extract the two resultant mass lists from IsoFiltR so that they can be used in later steps.
+Mono3 <- Isotopes[["Mono"]]
+Iso3 <- Isotopes[["Iso"]]
+
+
+Assign <- MFAssign_RMD(Mono3, Iso3, ionMode = "neg", lowMW =50, highMW = 650, Sx = 1, Nx = 3,Clx =3, Cl37x = 0,  ppm_err = 5, H_Cmin = 0.3, Omin = 1,
+                      HetCut = "off", NMScut = "on", SN = SNRatio*KMDN, DeNovo = 450, nLoop = 5, SulfCheck = "on", Ambig = "on", MSMS = "off")   #Standard parameters for negative mode
+```
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+#Extraction of data from the MFAssign_RMD() function. It has the same format as the MFAssignCHO_RMD() function.
+Unambig2 <- Assign[["Unambig"]]
+Ambig2 <- Assign[["Ambig"]]
+Unassigned2<- Assign[["None"]]
+Plot1 <- Assign[["MSAssign"]]
+Plot2 <- Assign[["Error"]]
+Plot3 <- Assign[["MSgroups"]]
+Plot4 <- Assign[["VK"]]
+Plot1
+Plot2
+Plot3
+Plot4
+
+print(nrow(Unambig2))
+
+Unambig3 <- rbind(Unambig1, Unambig2)
+
+print(nrow(Unambig3))
+
+#Saving the data to an external .csv file for further analysis and interpretation.
+
+
+write.csv(Unambig2, paste0("Assigned Formulas/CHONSCl35/", file_name, "_CHONSCl35_UMF.csv"), row.names=FALSE, na="")
+write.csv(Ambig2, paste0("Assigned Formulas/CHONSCl35/", file_name, "_CHONSCl35_AMF.csv"), row.names=FALSE, na="")
+# write.csv(Unassigned2, paste0("Assigned Formulas/CHONSCl35/", file_name, "_CHONSCl35_UNA.csv"), row.names=FALSE, na="")
+# write.csv(Unambig3, paste0("Assigned Formulas/CHONSCl35/", file_name, "_All_CHONSCl35_UMF.csv"), row.names=FALSE, na="")
+
+rm(Plot1)
+rm(Plot2)
+rm(Plot3)
+rm(Plot4)
+
+rm(unassignedA)
+rm(unassignedAB)
+gc()
+```
+
+###Full Assignment CHNOSCl37
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+# ##combine the unassigned and the ambiguous masses 
+unassignedA<- select(Ambig2,exp_mass, abundance)
+unassignedA <- unique(unassignedA)
+
+unassignedAB <- rbind(unassignedA, Unassigned2)
+
+Isotopes <- IsoFiltR(unassignedAB, SN = SNRatio * KMDN)
+Mono4 <- Isotopes[["Mono"]]
+Iso4 <- Isotopes[["Iso"]]
+
+Assign <- MFAssign_RMD(Mono4, Iso4, ionMode = "neg", lowMW =50, highMW = 650, Sx = 1, Nx = 3,Clx =1, Cl37x = 2, Ex=1,  ppm_err = 5, H_Cmin = 0.3, Omin = 1,
+                      HetCut = "off", NMScut = "on", SN = SNRatio*KMDN, DeNovo = 450, nLoop = 5, SulfCheck = "on", Ambig = "on", MSMS = "off")   #Standard parameters for negative mode
+```
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+#Extraction of data from the MFAssign_RMD() function. It has the same format as the MFAssignCHO_RMD() function.
+Unambig4 <- Assign[["Unambig"]]
+Ambig4 <- Assign[["Ambig"]]
+Unassigned4 <- Assign[["None"]]
+
+Plot1 <- Assign[["MSAssign"]]
+Plot2 <- Assign[["Error"]]
+Plot3 <- Assign[["MSgroups"]]
+Plot4 <- Assign[["VK"]]
+Plot1
+Plot2
+Plot3
+Plot4
+
+print(nrow(Unambig4))
+
+Unambig5 <- rbind(Unambig3, Unambig4)
+Ambig5 <- rbind(Ambig2, Ambig4)
+
+
+
+#Saving the data to an external .csv file for further analysis and interpretation.
+
+
+
+
+
+write.csv(Unambig4, paste0("Assigned Formulas/CHONSCl37/", file_name, "_CHONSCl37_UMF.csv"), row.names=FALSE, na="")
+write.csv(Ambig4, paste0("Assigned Formulas/CHONSCl37/", file_name, "_CHONSCl37_AMF.csv"), row.names=FALSE, na="")
+write.csv(Unassigned4, paste0("Assigned Formulas/CHONSCl37/", file_name, "_CHONSCl37_UNA.csv"), row.names=FALSE, na="")
+```
+
+
+```{r, echo = FALSE, message = FALSE, warning = FALSE}
+
+
+
+wd = 'C:/Users/songz/Desktop/Desktop/MS results/2020/20200715_UVCl/Data folder template/data'
+
+
+
+setwd(wd)
+
+
+write.csv(Unambig5, paste0("dataUMF/", file_name, "_All_UMF.csv"), row.names=FALSE, na="")
+write.csv(Ambig5, paste0("dataAMF/", file_name, "_All_AMF.csv"), row.names=FALSE, na="")
+
+# write.csv(Unambig6, paste0("Assigned Formulas/", file_name, "_All_noduplicate_CHONSCl37_UMF.csv"), row.names=FALSE, na="")
+
+rm(Plot1)
+rm(Plot2)
+rm(Plot3)
+rm(Plot4)
+
+gc()
+```
